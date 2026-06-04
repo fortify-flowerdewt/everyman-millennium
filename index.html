@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Everyman Millennium Library</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #1a1612; --ink-2: #4a4540; --ink-3: #8a837a;
+    --parchment: #faf7f2; --parchment-2: #f2ede4; --parchment-3: #e8e0d4;
+    --gold: #b8952a; --gold-light: #f5e9c8; --gold-mid: #d4ac42;
+    --crimson: #8b2020; --crimson-light: #f9ecec;
+    --green: #2a5c3a; --border: #d8cfc4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--parchment); color: var(--ink); min-height: 100vh; font-size: 15px; }
+
+  /* ── PIN SCREEN ── */
+  #pin-screen {
+    position: fixed; inset: 0; background: var(--ink);
+    display: flex; align-items: center; justify-content: center; z-index: 200;
+  }
+  #pin-screen.hidden { display: none; }
+  .pin-box {
+    text-align: center; padding: 3rem 2.5rem;
+    background: #242018; border: 1px solid #4a4030; border-radius: 6px;
+    width: 320px;
+  }
+  .pin-box h1 { font-family: 'Libre Baskerville', serif; color: var(--parchment); font-size: 1.4rem; margin-bottom: 0.25rem; }
+  .pin-box p { color: #b8aa9a; font-size: 0.8rem; margin-bottom: 2rem; letter-spacing: 0.08em; text-transform: uppercase; }
+  .pin-dots { display: flex; gap: 0.75rem; justify-content: center; margin-bottom: 2rem; }
+  .pin-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #6a5f4a; background: transparent; transition: all 0.15s; }
+  .pin-dot.filled { background: var(--gold-mid); border-color: var(--gold-mid); }
+  .pin-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+  .pin-key {
+    font-family: 'Libre Baskerville', serif; font-size: 1.2rem; color: var(--parchment);
+    background: #2e2820; border: 1px solid #4a4030; border-radius: 4px;
+    padding: 0.85rem; cursor: pointer; transition: all 0.1s; user-select: none;
+  }
+  .pin-key:hover { background: #3a3028; border-color: var(--gold); }
+  .pin-key:active { transform: scale(0.95); }
+  .pin-key.del { font-size: 0.9rem; color: #b8aa9a; }
+  .pin-error { color: var(--crimson); font-size: 0.8rem; margin-top: 1rem; min-height: 1.2em; }
+  .pin-setup-hint { color: #b8aa9a; font-size: 0.75rem; margin-top: 1rem; line-height: 1.5; }
+
+  /* ── HEADER ── */
+  .site-header { background: var(--ink); color: var(--parchment); padding: 1.5rem 2.5rem; border-bottom: 3px solid var(--gold); display: flex; justify-content: space-between; align-items: flex-end; gap: 2rem; flex-wrap: wrap; }
+  .site-header h1 { font-family: 'Libre Baskerville', serif; font-size: 1.6rem; font-weight: 700; line-height: 1.2; }
+  .site-header h1 span { display: block; font-size: 0.8rem; font-family: 'DM Sans', sans-serif; font-weight: 300; color: #b8aa9a; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 4px; }
+  .stats-bar { display: flex; gap: 1.75rem; flex-wrap: wrap; align-items: flex-end; }
+  .stat { text-align: right; }
+  .stat-num { font-family: 'Libre Baskerville', serif; font-size: 1.4rem; color: var(--gold-mid); line-height: 1; }
+  .stat-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em; color: #b8aa9a; margin-top: 2px; }
+  .header-actions { display: flex; gap: 0.5rem; align-items: center; }
+  .btn-sm { font-family: 'DM Sans', sans-serif; font-size: 0.75rem; padding: 0.35rem 0.75rem; border-radius: 3px; cursor: pointer; transition: all 0.15s; border: 1px solid #6a5f4a; color: #c8baa8; background: transparent; }
+  .btn-sm:hover { border-color: var(--gold-mid); color: var(--gold-mid); }
+  .sync-status { font-size: 0.72rem; color: #6a5f4a; display: flex; align-items: center; gap: 0.4rem; }
+  .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: #6a5f4a; flex-shrink: 0; }
+  .sync-dot.synced { background: #4a8c5a; }
+  .sync-dot.syncing { background: var(--gold-mid); animation: pulse 1s infinite; }
+  .sync-dot.error { background: var(--crimson); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* ── PROGRESS ── */
+  .progress-wrap { background: var(--parchment-2); border-bottom: 1px solid var(--border); padding: 0.9rem 2.5rem; display: flex; align-items: center; gap: 1.5rem; }
+  .progress-track { flex: 1; height: 8px; background: var(--parchment-3); border-radius: 4px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-mid)); border-radius: 4px; transition: width 0.4s ease; }
+  .progress-label { font-size: 0.8rem; color: var(--ink-3); min-width: 80px; text-align: right; }
+
+  /* ── CONTROLS ── */
+  .controls { padding: 1.1rem 2.5rem; background: var(--parchment-2); border-bottom: 1px solid var(--border); display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+  .controls input[type="text"], .controls select { font-family: 'DM Sans', sans-serif; font-size: 0.875rem; border: 1px solid var(--border); background: var(--parchment); color: var(--ink); padding: 0.5rem 0.75rem; border-radius: 4px; outline: none; transition: border-color 0.15s; }
+  .controls input[type="text"]:focus, .controls select:focus { border-color: var(--gold); }
+  .controls input[type="text"] { min-width: 220px; flex: 1; }
+  .filter-group { display: flex; gap: 4px; }
+  .filter-btn { font-family: 'DM Sans', sans-serif; font-size: 0.75rem; padding: 0.4rem 0.85rem; border: 1px solid var(--border); background: var(--parchment); color: var(--ink-2); cursor: pointer; border-radius: 3px; transition: all 0.15s; }
+  .filter-btn:hover { border-color: var(--gold); color: var(--gold); }
+  .filter-btn.active { background: var(--ink); border-color: var(--ink); color: var(--parchment); }
+
+  /* ── GRID ── */
+  .book-grid { padding: 2rem 2.5rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 1rem; }
+  .book-card { background: #fff; border: 1px solid var(--border); border-radius: 3px; padding: 1rem 1.1rem; cursor: pointer; transition: all 0.15s; border-left: 3px solid transparent; }
+  .book-card:hover { border-color: var(--gold); border-left-color: var(--gold); box-shadow: 0 2px 8px rgba(26,22,18,0.08); }
+  .book-card.owned { border-left-color: var(--green); }
+  .book-card.owned .card-status-dot { background: var(--green); border-color: var(--green); }
+  .book-card.reading { border-left-color: var(--gold); }
+  .book-card.reading .card-status-dot { background: var(--gold-mid); border-color: var(--gold-mid); }
+  .book-card.read { border-left-color: var(--crimson); }
+  .book-card.read .card-status-dot { background: var(--crimson); border-color: var(--crimson); }
+  .book-card.wishlist .card-status-dot { background: var(--parchment-3); border-color: var(--ink-3); }
+  .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.3rem; }
+  .card-num { font-size: 0.68rem; color: var(--ink-3); letter-spacing: 0.06em; margin-top: 2px; white-space: nowrap; }
+  .card-title { font-family: 'Libre Baskerville', serif; font-size: 0.9rem; font-weight: 700; line-height: 1.35; flex: 1; }
+  .card-author { font-size: 0.78rem; color: var(--ink-2); margin-bottom: 0.4rem; font-style: italic; }
+  .card-meta { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
+  .card-tag { font-size: 0.68rem; padding: 2px 7px; border-radius: 2px; }
+  .tag-price { background: var(--gold-light); color: #7a5c10; }
+  .tag-source { background: var(--parchment-3); color: var(--ink-2); }
+  .tag-read { background: var(--crimson-light); color: var(--crimson); }
+  .tag-reading { background: #fff8e8; color: #8a6010; }
+  .card-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; background: var(--parchment-3); border: 1.5px solid var(--border); }
+  .no-results { text-align: center; padding: 4rem 2rem; color: var(--ink-3); grid-column: 1/-1; }
+  .no-results p { font-family: 'Libre Baskerville', serif; font-style: italic; }
+
+  /* ── MODAL ── */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(10,8,6,0.55); z-index: 100; align-items: center; justify-content: center; padding: 1rem; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--parchment); border: 1px solid var(--border); border-radius: 4px; width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(10,8,6,0.18); }
+  .modal-header { padding: 1.25rem 1.5rem 1rem; border-bottom: 1px solid var(--border); margin-bottom: 1.25rem; }
+  .modal-header h2 { font-family: 'Libre Baskerville', serif; font-size: 1.05rem; font-weight: 700; line-height: 1.3; }
+  .modal-author { font-size: 0.85rem; color: var(--ink-2); font-style: italic; margin-top: 3px; }
+  .modal-num { font-size: 0.7rem; color: var(--ink-3); letter-spacing: 0.08em; margin-bottom: 4px; }
+  .modal-body { padding: 0 1.5rem 1.5rem; }
+  .field-group { margin-bottom: 1rem; }
+  .field-group label { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); margin-bottom: 5px; }
+  .field-group input, .field-group select, .field-group textarea { font-family: 'DM Sans', sans-serif; font-size: 0.875rem; width: 100%; border: 1px solid var(--border); background: #fff; color: var(--ink); padding: 0.5rem 0.75rem; border-radius: 3px; outline: none; transition: border-color 0.15s; }
+  .field-group input:focus, .field-group select:focus, .field-group textarea:focus { border-color: var(--gold); }
+  .field-group textarea { resize: vertical; min-height: 72px; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+  .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; padding-top: 0.75rem; border-top: 1px solid var(--border); margin-top: 0.5rem; }
+  .btn { font-family: 'DM Sans', sans-serif; font-size: 0.85rem; padding: 0.5rem 1.1rem; border-radius: 3px; cursor: pointer; transition: all 0.15s; border: 1px solid transparent; }
+  .btn-primary { background: var(--ink); color: var(--parchment); border-color: var(--ink); }
+  .btn-primary:hover { background: #2d2820; }
+  .btn-ghost { background: transparent; color: var(--ink-2); border-color: var(--border); }
+  .btn-ghost:hover { border-color: var(--ink-2); }
+
+  /* ── LOADING ── */
+  #loading-overlay { position: fixed; inset: 0; background: var(--ink); display: flex; align-items: center; justify-content: center; z-index: 150; transition: opacity 0.3s; }
+  #loading-overlay.hidden { opacity: 0; pointer-events: none; }
+  .loading-text { font-family: 'Libre Baskerville', serif; color: var(--gold-mid); font-size: 1rem; letter-spacing: 0.1em; }
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading-overlay"><div class="loading-text">Loading…</div></div>
+
+<!-- PIN Screen -->
+<div id="pin-screen">
+  <div class="pin-box">
+    <h1>Everyman Millennium Library</h1>
+    <p id="pin-label">Enter your PIN</p>
+    <div class="pin-dots" id="pin-dots">
+      <div class="pin-dot" id="d0"></div>
+      <div class="pin-dot" id="d1"></div>
+      <div class="pin-dot" id="d2"></div>
+      <div class="pin-dot" id="d3"></div>
+    </div>
+    <div class="pin-keypad">
+      <button class="pin-key" onclick="pinKey('1')">1</button>
+      <button class="pin-key" onclick="pinKey('2')">2</button>
+      <button class="pin-key" onclick="pinKey('3')">3</button>
+      <button class="pin-key" onclick="pinKey('4')">4</button>
+      <button class="pin-key" onclick="pinKey('5')">5</button>
+      <button class="pin-key" onclick="pinKey('6')">6</button>
+      <button class="pin-key" onclick="pinKey('7')">7</button>
+      <button class="pin-key" onclick="pinKey('8')">8</button>
+      <button class="pin-key" onclick="pinKey('9')">9</button>
+      <button class="pin-key del" onclick="pinClear()">CLR</button>
+      <button class="pin-key" onclick="pinKey('0')">0</button>
+      <button class="pin-key del" onclick="pinBackspace()">⌫</button>
+    </div>
+    <div class="pin-error" id="pin-error"></div>
+    <div class="pin-setup-hint" id="pin-hint"></div>
+  </div>
+</div>
+
+<!-- Main App -->
+<div id="app" style="display:none">
+  <header class="site-header">
+    <div>
+      <h1><span>Everyman's Library</span>Millennium Library</h1>
+    </div>
+    <div class="stats-bar">
+      <div class="stat"><div class="stat-num" id="stat-owned">0</div><div class="stat-label">owned</div></div>
+      <div class="stat"><div class="stat-num" id="stat-read">0</div><div class="stat-label">read</div></div>
+      <div class="stat"><div class="stat-num" id="stat-spent">£0</div><div class="stat-label">spent</div></div>
+      <div class="stat"><div class="stat-num" id="stat-total">300</div><div class="stat-label">total</div></div>
+      <div class="header-actions">
+        <div class="sync-status"><div class="sync-dot synced" id="sync-dot"></div><span id="sync-text">Synced</span></div>
+        <button class="btn-sm" onclick="signOutUser()">Lock</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="progress-wrap">
+    <div style="font-size:0.78rem;color:var(--ink-3);min-width:90px">Collection progress</div>
+    <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+    <div class="progress-label" id="progress-label">0 / 300</div>
+  </div>
+
+  <div class="controls">
+    <input type="text" id="search-input" placeholder="Search by title or author…" oninput="renderGrid()">
+    <select id="filter-status" onchange="renderGrid()">
+      <option value="all">All statuses</option>
+      <option value="owned">Owned</option>
+      <option value="reading">Reading</option>
+      <option value="read">Read</option>
+      <option value="wishlist">Wishlist</option>
+      <option value="none">Not yet acquired</option>
+    </select>
+    <select id="sort-by" onchange="renderGrid()">
+      <option value="number">Sort by number</option>
+      <option value="title">Sort by title</option>
+      <option value="author">Sort by author</option>
+    </select>
+    <div class="filter-group">
+      <button class="filter-btn active" onclick="filterOwned(this,'all')">All</button>
+      <button class="filter-btn" onclick="filterOwned(this,'owned')">In collection</button>
+      <button class="filter-btn" onclick="filterOwned(this,'unowned')">Needed</button>
+    </div>
+  </div>
+
+  <div class="book-grid" id="book-grid"></div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="modal" onclick="closeModalOnBg(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-num" id="m-num"></div>
+      <h2 id="m-title"></h2>
+      <div class="modal-author" id="m-author"></div>
+    </div>
+    <div class="modal-body">
+      <div class="field-row">
+        <div class="field-group">
+          <label>Status</label>
+          <select id="m-status">
+            <option value="none">Not acquired</option>
+            <option value="wishlist">Wishlist</option>
+            <option value="owned">Owned</option>
+            <option value="reading">Currently reading</option>
+            <option value="read">Read</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label>Price paid (£)</label>
+          <input type="number" id="m-price" step="0.01" min="0" placeholder="0.00">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label>Source</label>
+          <input type="text" id="m-source" placeholder="e.g. Oxfam, eBay…">
+        </div>
+        <div class="field-group">
+          <label>Date acquired</label>
+          <input type="date" id="m-date">
+        </div>
+      </div>
+      <div class="field-group">
+        <label>Condition</label>
+        <select id="m-condition">
+          <option value="">—</option>
+          <option value="New">New</option>
+          <option value="Fine">Fine</option>
+          <option value="Very Good">Very Good</option>
+          <option value="Good">Good</option>
+          <option value="Fair">Fair</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label>Notes</label>
+        <textarea id="m-notes" placeholder="Any notes about this copy…"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveBook()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase -->
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDDR6U5ZjVTcVQxuY4rmhWRuRcuna16yFQ",
+  authDomain: "everyman-millennium.firebaseapp.com",
+  projectId: "everyman-millennium",
+  storageBucket: "everyman-millennium.firebasestorage.app",
+  messagingSenderId: "316573102484",
+  appId: "1:316573102484:web:cee0d2c3232fc7a24e1f81"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// ── PIN SYSTEM ──
+// The PIN hashes to a deterministic Firebase anonymous UID by storing
+// a mapping in localStorage: pin_hash → firebase_uid
+// First time: user sets a PIN → signs in anonymously → stores uid against pin hash
+// Subsequent times: user enters PIN → looks up uid → can't re-auth to same anon account
+// So we use a simpler approach: store the PIN hash in localStorage and use a single
+// anonymous account per device, protected by PIN entry before showing the app.
+
+const PIN_KEY = 'everyman_pin_hash';
+const SESSION_KEY = 'everyman_session';
+let currentPin = '';
+let isSettingPin = false;
+let confirmPin = '';
+let currentUserId = null;
+let collData = {};
+let ownerFilter = 'all';
+let currentEdit = null;
+let saveTimeout = null;
+let unsubscribe = null;
+
+// Simple hash
+async function hashPin(pin) {
+  const msgBuffer = new TextEncoder().encode('everyman-salt-' + pin);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+}
+
+function setSyncStatus(state) {
+  const dot = document.getElementById('sync-dot');
+  const text = document.getElementById('sync-text');
+  dot.className = 'sync-dot ' + state;
+  text.textContent = state === 'synced' ? 'Synced' : state === 'syncing' ? 'Saving…' : 'Offline';
+}
+
+// ── BOOT ──
+onAuthStateChanged(auth, async (user) => {
+  document.getElementById('loading-overlay').classList.add('hidden');
+  if (user) {
+    // Check session PIN
+    const session = sessionStorage.getItem(SESSION_KEY);
+    if (session === 'ok') {
+      currentUserId = user.uid;
+      showApp(user.uid);
+    } else {
+      // Signed in but no session — show PIN
+      showPinScreen(false);
+    }
+  } else {
+    const storedHash = localStorage.getItem(PIN_KEY);
+    if (!storedHash) {
+      showPinScreen(true); // first time — set PIN
+    } else {
+      showPinScreen(false); // returning — enter PIN
+    }
+  }
+});
+
+// ── PIN SCREEN ──
+window.pinKey = function(digit) {
+  if (isSettingPin) {
+    if (confirmPin !== null && typeof confirmPin === 'string' && confirmPin.length >= 0 && currentPin.length === 4) {
+      // We're in confirm mode
+      confirmPin += digit;
+      updateDots(confirmPin.length);
+      if (confirmPin.length === 4) handleConfirmPin();
+    } else {
+      currentPin += digit;
+      updateDots(currentPin.length);
+      if (currentPin.length === 4) {
+        document.getElementById('pin-label').textContent = 'Confirm your PIN';
+        document.getElementById('pin-hint').textContent = '';
+        confirmPin = '';
+        updateDots(0);
+      }
+    }
+  } else {
+    currentPin += digit;
+    updateDots(currentPin.length);
+    if (currentPin.length === 4) handleEnterPin();
+  }
+}
+
+window.pinBackspace = function() {
+  if (isSettingPin && confirmPin !== '' && currentPin.length === 4) {
+    confirmPin = confirmPin.slice(0, -1);
+    updateDots(confirmPin.length);
+  } else {
+    currentPin = currentPin.slice(0, -1);
+    updateDots(currentPin.length);
+  }
+}
+
+window.pinClear = function() {
+  currentPin = ''; confirmPin = '';
+  updateDots(0);
+  document.getElementById('pin-error').textContent = '';
+}
+
+function updateDots(n) {
+  for (let i = 0; i < 4; i++) {
+    document.getElementById('d' + i).classList.toggle('filled', i < n);
+  }
+}
+
+function showPinScreen(setup) {
+  isSettingPin = setup;
+  confirmPin = setup ? '' : null;
+  currentPin = '';
+  updateDots(0);
+  document.getElementById('pin-screen').classList.remove('hidden');
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('pin-error').textContent = '';
+  if (setup) {
+    document.getElementById('pin-label').textContent = 'Set a PIN to protect your library';
+    document.getElementById('pin-hint').textContent = 'Choose a 4-digit PIN. You\'ll need this to access your collection on any device.';
+  } else {
+    document.getElementById('pin-label').textContent = 'Enter your PIN';
+    document.getElementById('pin-hint').textContent = '';
+  }
+}
+
+async function handleConfirmPin() {
+  if (confirmPin !== currentPin) {
+    document.getElementById('pin-error').textContent = 'PINs don\'t match. Try again.';
+    currentPin = ''; confirmPin = '';
+    updateDots(0);
+    document.getElementById('pin-label').textContent = 'Set a PIN to protect your library';
+    return;
+  }
+  // PINs match — sign in anonymously and store hash
+  try {
+    const hash = await hashPin(currentPin);
+    const cred = await signInAnonymously(auth);
+    localStorage.setItem(PIN_KEY, hash);
+    sessionStorage.setItem(SESSION_KEY, 'ok');
+    currentUserId = cred.user.uid;
+    document.getElementById('pin-screen').classList.add('hidden');
+    showApp(cred.user.uid);
+  } catch(e) {
+    document.getElementById('pin-error').textContent = 'Error setting up. Please try again.';
+    currentPin = ''; confirmPin = '';
+    updateDots(0);
+  }
+}
+
+async function handleEnterPin() {
+  const storedHash = localStorage.getItem(PIN_KEY);
+  const hash = await hashPin(currentPin);
+  if (hash !== storedHash) {
+    document.getElementById('pin-error').textContent = 'Incorrect PIN.';
+    currentPin = '';
+    updateDots(0);
+    return;
+  }
+  // PIN correct
+  sessionStorage.setItem(SESSION_KEY, 'ok');
+  // If already signed in, show app; otherwise sign in
+  if (auth.currentUser) {
+    currentUserId = auth.currentUser.uid;
+    document.getElementById('pin-screen').classList.add('hidden');
+    showApp(auth.currentUser.uid);
+  } else {
+    try {
+      const cred = await signInAnonymously(auth);
+      currentUserId = cred.user.uid;
+      document.getElementById('pin-screen').classList.add('hidden');
+      showApp(cred.user.uid);
+    } catch(e) {
+      document.getElementById('pin-error').textContent = 'Sign-in failed. Check your connection.';
+      currentPin = ''; updateDots(0);
+    }
+  }
+}
+
+window.signOutUser = function() {
+  sessionStorage.removeItem(SESSION_KEY);
+  if (unsubscribe) unsubscribe();
+  showPinScreen(false);
+}
+
+// ── APP ──
+async function showApp(uid) {
+  document.getElementById('pin-screen').classList.add('hidden');
+  document.getElementById('app').style.display = 'block';
+
+  // Load data from Firestore, then subscribe to real-time updates
+  const docRef = doc(db, 'users', uid, 'data', 'collection');
+  try {
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      collData = snap.data().books || {};
+    }
+  } catch(e) {
+    console.warn('Initial load failed, using empty data');
+  }
+
+  renderGrid();
+
+  // Real-time listener
+  unsubscribe = onSnapshot(docRef, (snap) => {
+    if (snap.exists()) {
+      collData = snap.data().books || {};
+      renderGrid();
+      setSyncStatus('synced');
+    }
+  }, (err) => {
+    setSyncStatus('error');
+  });
+}
+
+// ── SAVE TO FIRESTORE ──
+function scheduleSave() {
+  setSyncStatus('syncing');
+  if (saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(async () => {
+    try {
+      const docRef = doc(db, 'users', currentUserId, 'data', 'collection');
+      await setDoc(docRef, { books: collData });
+      setSyncStatus('synced');
+    } catch(e) {
+      setSyncStatus('error');
+    }
+  }, 800);
+}
+
+// ── RENDER ──
+window.renderGrid = function() {
+  const search = document.getElementById('search-input').value.toLowerCase();
+  const filterStatus = document.getElementById('filter-status').value;
+  const sortBy = document.getElementById('sort-by').value;
+  let books = BOOKS_RAW.map(([num, title, author]) => ({ num, title, author, data: getBook(num) }));
+  if (search) books = books.filter(b => b.title.toLowerCase().includes(search) || b.author.toLowerCase().includes(search));
+  if (filterStatus !== 'all') books = books.filter(b => b.data.status === filterStatus);
+  if (ownerFilter === 'owned') books = books.filter(b => b.data.status !== 'none');
+  else if (ownerFilter === 'unowned') books = books.filter(b => b.data.status === 'none');
+  if (sortBy === 'title') books.sort((a,b) => a.title.localeCompare(b.title));
+  else if (sortBy === 'author') books.sort((a,b) => a.author.localeCompare(b.author));
+  else books.sort((a,b) => a.num - b.num);
+  const grid = document.getElementById('book-grid');
+  grid.innerHTML = '';
+  if (!books.length) { grid.innerHTML = '<div class="no-results"><p>No books match.</p></div>'; updateStats(); return; }
+  books.forEach(({ num, title, author, data }) => {
+    const card = document.createElement('div');
+    card.className = 'book-card ' + data.status;
+    card.onclick = () => openModal(num);
+    let tags = '';
+    if (data.price) tags += `<span class="card-tag tag-price">£${parseFloat(data.price).toFixed(2)}</span>`;
+    if (data.source) tags += `<span class="card-tag tag-source">${esc(data.source)}</span>`;
+    if (data.status === 'read') tags += `<span class="card-tag tag-read">Read</span>`;
+    if (data.status === 'reading') tags += `<span class="card-tag tag-reading">Reading</span>`;
+    card.innerHTML = `<div class="card-top"><span class="card-num">#${num}</span><div class="card-status-dot"></div></div><div class="card-title">${esc(title)}</div><div class="card-author">${esc(author)}</div>${tags ? `<div class="card-meta">${tags}</div>` : ''}`;
+    grid.appendChild(card);
+  });
+  updateStats();
+}
+
+function updateStats() {
+  const all = BOOKS_RAW.map(([num]) => getBook(num));
+  const owned = all.filter(b => b.status !== 'none').length;
+  const read = all.filter(b => b.status === 'read').length;
+  const spent = all.reduce((s,b) => s + (parseFloat(b.price)||0), 0);
+  document.getElementById('stat-owned').textContent = owned;
+  document.getElementById('stat-read').textContent = read;
+  document.getElementById('stat-spent').textContent = '£' + spent.toFixed(2);
+  const pct = owned / BOOKS_RAW.length * 100;
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-label').textContent = owned + ' / ' + BOOKS_RAW.length;
+}
+
+function getBook(num) { return collData[num] || { status: 'none', price: '', source: '', date: '', condition: '', notes: '' }; }
+
+window.openModal = function(num) {
+  const [_, title, author] = BOOKS_RAW.find(b => b[0] === num);
+  const data = getBook(num);
+  currentEdit = num;
+  document.getElementById('m-num').textContent = 'No. ' + num;
+  document.getElementById('m-title').textContent = title;
+  document.getElementById('m-author').textContent = author;
+  document.getElementById('m-status').value = data.status || 'none';
+  document.getElementById('m-price').value = data.price || '';
+  document.getElementById('m-source').value = data.source || '';
+  document.getElementById('m-date').value = data.date || '';
+  document.getElementById('m-condition').value = data.condition || '';
+  document.getElementById('m-notes').value = data.notes || '';
+  document.getElementById('modal').classList.add('open');
+}
+
+window.closeModal = function() { document.getElementById('modal').classList.remove('open'); currentEdit = null; }
+window.closeModalOnBg = function(e) { if (e.target === document.getElementById('modal')) closeModal(); }
+
+window.saveBook = function() {
+  if (!currentEdit) return;
+  collData[currentEdit] = {
+    status: document.getElementById('m-status').value,
+    price: document.getElementById('m-price').value,
+    source: document.getElementById('m-source').value,
+    date: document.getElementById('m-date').value,
+    condition: document.getElementById('m-condition').value,
+    notes: document.getElementById('m-notes').value,
+  };
+  closeModal();
+  renderGrid();
+  scheduleSave();
+}
+
+window.filterOwned = function(btn, val) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  ownerFilter = val;
+  renderGrid();
+}
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── BOOK DATA ──
+const BOOKS_RAW = [
+  [1,"Pride and Prejudice","Jane Austen"],
+  [2,"Wuthering Heights","Emily Brontë"],
+  [3,"Don Quixote","Miguel de Cervantes"],
+  [4,"Typhoon and Other Stories","Joseph Conrad"],
+  [5,"The Complete English Poems","John Donne"],
+  [6,"Middlemarch","George Eliot"],
+  [7,"Tristram Shandy","Laurence Sterne"],
+  [8,"Bleak House","Charles Dickens"],
+  [9,"A Portrait of the Artist as a Young Man","James Joyce"],
+  [10,"Jane Eyre","Charlotte Brontë"],
+  [11,"The Wealth of Nations","Adam Smith"],
+  [12,"Vanity Fair","William Makepeace Thackeray"],
+  [13,"Childhood, Boyhood, and Youth","Leo Tolstoy"],
+  [14,"The Warden","Anthony Trollope"],
+  [15,"Cousin Bette","Honoré de Balzac"],
+  [16,"Robinson Crusoe","Daniel Defoe"],
+  [17,"Fathers and Sons","Ivan Turgenev"],
+  [18,"The Woman in White","Wilkie Collins"],
+  [19,"The Great Gatsby","F. Scott Fitzgerald"],
+  [20,"The Good Soldier","Ford Madox Ford"],
+  [21,"Far From the Madding Crowd","Thomas Hardy"],
+  [22,"Sons and Lovers","D.H. Lawrence"],
+  [23,"The Leopard","Giuseppe di Lampedusa"],
+  [24,"Germinal","Émile Zola"],
+  [25,"Howards End","E.M. Forster"],
+  [26,"Gulliver's Travels","Jonathan Swift"],
+  [27,"Poems","Samuel Taylor Coleridge"],
+  [28,"Tom Jones","Henry Fielding"],
+  [29,"A Passage to India","E.M. Forster"],
+  [30,"To the Lighthouse","Virginia Woolf"],
+  [31,"David Copperfield","Charles Dickens"],
+  [32,"Moll Flanders","Daniel Defoe"],
+  [33,"Tess of the D'Urbervilles","Thomas Hardy"],
+  [34,"Poems and Prophecies","William Blake"],
+  [35,"Crime and Punishment","Fyodor Dostoevsky"],
+  [36,"Emma","Jane Austen"],
+  [37,"Old Goriot","Honoré de Balzac"],
+  [38,"Scarlet and Black","Stendhal"],
+  [39,"The Portrait of a Lady","Henry James"],
+  [40,"Moby-Dick","Herman Melville"],
+  [41,"Doctor Zhivago","Boris Pasternak"],
+  [42,"Plays, Prose Writings and Poems","Oscar Wilde"],
+  [43,"Under Western Eyes","Joseph Conrad"],
+  [44,"Tom Sawyer and Huckleberry Finn","Mark Twain"],
+  [45,"The Steppe and Other Stories","Anton Chekhov"],
+  [46,"The House of Mirth","Edith Wharton"],
+  [47,"Death in Venice and Other Stories","Thomas Mann"],
+  [48,"The Garden Party and Other Stories","Katherine Mansfield"],
+  [49,"Dubliners","James Joyce"],
+  [50,"The Princess Casamassima","Henry James"],
+  [51,"Sense and Sensibility","Jane Austen"],
+  [52,"Mansfield Park","Jane Austen"],
+  [53,"The Poems","John Keats"],
+  [54,"A Sportsman's Notebook","Ivan Turgenev"],
+  [55,"Meditations","Marcus Aurelius"],
+  [56,"Great Expectations","Charles Dickens"],
+  [57,"Barchester Towers","Anthony Trollope"],
+  [58,"Anna Karenina","Leo Tolstoy"],
+  [59,"Adam Bede","George Eliot"],
+  [60,"The Iliad","Homer"],
+  [61,"Utopia","Thomas More"],
+  [62,"Frankenstein","Mary Shelley"],
+  [63,"Dr. Jekyll and Mr. Hyde","Robert Louis Stevenson"],
+  [64,"Hindu Scriptures","ed. Nicol Macnicol"],
+  [65,"Lord Jim","Joseph Conrad"],
+  [66,"The Master and Margarita","Mikhail Bulgakov"],
+  [67,"Pale Fire","Vladimir Nabokov"],
+  [68,"Villette","Charlotte Brontë"],
+  [69,"The Sound and the Fury","William Faulkner"],
+  [70,"The Brothers Karamazov","Fyodor Dostoevsky"],
+  [71,"The Human Factor","Graham Greene"],
+  [72,"Persuasion","Jane Austen"],
+  [73,"Hard Times","Charles Dickens"],
+  [74,"The Canterbury Tales","Geoffrey Chaucer"],
+  [75,"The Trial","Franz Kafka"],
+  [76,"Les Liaisons Dangereuses","Choderlos de Laclos"],
+  [77,"Women in Love","D.H. Lawrence"],
+  [78,"A Hero of Our Time","Mikhail Lermontov"],
+  [79,"The Prince","Niccolò Machiavelli"],
+  [80,"Doctor Faustus","Thomas Mann"],
+  [81,"On Liberty and Utilitarianism","John Stuart Mill"],
+  [82,"The Bostonians","Henry James"],
+  [83,"The Captain's Daughter","Alexander Pushkin"],
+  [84,"Confessions","Jean-Jacques Rousseau"],
+  [85,"The Aeneid","Virgil"],
+  [86,"A Vindication of the Rights of Woman","Mary Wollstonecraft"],
+  [87,"The Arabian Nights, Vol. I","trans. N.J. Dawood"],
+  [88,"Nostromo","Joseph Conrad"],
+  [89,"Death Comes for the Archbishop","Willa Cather"],
+  [90,"Memoirs of a Nun","Denis Diderot"],
+  [91,"Sonnets and Narrative Poems","William Shakespeare"],
+  [92,"Tragedies, Vol. I","William Shakespeare"],
+  [93,"The Theban Plays","Sophocles"],
+  [94,"The Odyssey","Homer"],
+  [95,"The Decline and Fall of the Roman Empire, Vols. I–III","Edward Gibbon"],
+  [96,"War and Peace","Leo Tolstoy"],
+  [97,"The Complete English Poems","John Milton"],
+  [98,"The Republic","Plato"],
+  [99,"The Complete Stories","Edgar Allan Poe"],
+  [100,"Ulysses","James Joyce"],
+  [101,"The Life of Samuel Johnson","James Boswell"],
+  [102,"The Charterhouse of Parma","Stendhal"],
+  [103,"Poems","W.B. Yeats"],
+  [104,"The Eustace Diamonds","Anthony Trollope"],
+  [105,"The Koran","trans. N.J. Dawood"],
+  [106,"The Master of Ballantrae; Weir of Hermiston","Robert Louis Stevenson"],
+  [107,"Buddenbrooks","Thomas Mann"],
+  [108,"The Tale of Genji","Murasaki Shikibu"],
+  [109,"Northanger Abbey","Jane Austen"],
+  [110,"Oliver Twist","Charles Dickens"],
+  [111,"Little Dorrit","Charles Dickens"],
+  [112,"The Mill on the Floss","George Eliot"],
+  [113,"Joseph Andrews and Shamela","Henry Fielding"],
+  [114,"Parade's End","Ford Madox Ford"],
+  [115,"Jude the Obscure","Thomas Hardy"],
+  [116,"The Return of the Native","Thomas Hardy"],
+  [117,"The Golden Bowl","Henry James"],
+  [118,"The Way of All Flesh","Samuel Butler"],
+  [119,"Eugénie Grandet","Honoré de Balzac"],
+  [120,"My Life and Other Stories","Anton Chekhov"],
+  [121,"On War","Carl von Clausewitz"],
+  [122,"The Moonstone","Wilkie Collins"],
+  [123,"The Secret Agent","Joseph Conrad"],
+  [124,"Oblomov","Ivan Goncharov"],
+  [125,"The Scarlet Letter","Nathaniel Hawthorne"],
+  [126,"Confessions of a Justified Sinner","James Hogg"],
+  [127,"The Castle","Franz Kafka"],
+  [128,"The Confessions","St Augustine"],
+  [129,"Lives of the Painters, Sculptors and Architects","Giorgio Vasari"],
+  [130,"Candide and Other Stories","Voltaire"],
+  [131,"Letters","Lady Mary Wortley Montagu"],
+  [132,"The Awakening","Kate Chopin"],
+  [133,"Lolita","Vladimir Nabokov"],
+  [134,"Nineteen Eighty-Four","George Orwell"],
+  [135,"Things Fall Apart","Chinua Achebe"],
+  [136,"Walden","Henry David Thoreau"],
+  [137,"The Second Sex","Simone de Beauvoir"],
+  [138,"If on a Winter's Night a Traveler","Italo Calvino"],
+  [139,"The Outsider","Albert Camus"],
+  [140,"Madame Bovary","Gustave Flaubert"],
+  [141,"Silas Marner","George Eliot"],
+  [142,"The Arabian Nights, Vol. II","trans. N.J. Dawood"],
+  [143,"A Tale of Two Cities","Charles Dickens"],
+  [144,"Victory","Joseph Conrad"],
+  [145,"Collected Stories","Franz Kafka"],
+  [146,"Brighton Rock","Graham Greene"],
+  [147,"The Tin Drum","Günter Grass"],
+  [148,"The Mayor of Casterbridge","Thomas Hardy"],
+  [149,"A Farewell to Arms","Ernest Hemingway"],
+  [150,"Animal Farm","George Orwell"],
+  [151,"The Good Soldier Švejk","Jaroslav Hašek"],
+  [152,"The Awkward Age","Henry James"],
+  [153,"The Complete Poems","Andrew Marvell"],
+  [154,"The Grapes of Wrath","John Steinbeck"],
+  [155,"The Makioka Sisters","Jun'ichirō Tanizaki"],
+  [156,"Decline and Fall","Evelyn Waugh"],
+  [157,"Mrs. Dalloway","Virginia Woolf"],
+  [158,"Tao Te Ching","Lao-tzu"],
+  [159,"Nicholas Nickleby","Charles Dickens"],
+  [160,"Our Mutual Friend","Charles Dickens"],
+  [161,"The Rainbow","D.H. Lawrence"],
+  [162,"The Social Contract; The Discourses","Jean-Jacques Rousseau"],
+  [163,"Daniel Deronda","George Eliot"],
+  [164,"Tragedies, Vol. II","William Shakespeare"],
+  [165,"Doctor Thorne","Anthony Trollope"],
+  [166,"Ficciones","Jorge Luis Borges"],
+  [167,"Dombey and Son","Charles Dickens"],
+  [168,"The Mabinogion","trans. Gwyn and Thomas Jones"],
+  [169,"The Temple of the Golden Pavilion","Yukio Mishima"],
+  [170,"The Cossacks","Leo Tolstoy"],
+  [171,"Framley Parsonage","Anthony Trollope"],
+  [172,"Brideshead Revisited","Evelyn Waugh"],
+  [173,"The Sword of Honour Trilogy","Evelyn Waugh"],
+  [174,"Heart of Darkness","Joseph Conrad"],
+  [175,"The Old Testament","King James Bible"],
+  [176,"The Souls of Black Folk","W.E.B. Du Bois"],
+  [177,"Histories, Vol. I","William Shakespeare"],
+  [178,"Fear and Trembling; The Book on Adler","Søren Kierkegaard"],
+  [179,"Democracy in America","Alexis de Tocqueville"],
+  [180,"Collected Stories","D.H. Lawrence"],
+  [181,"Gargantua and Pantagruel","François Rabelais"],
+  [182,"Demons","Fyodor Dostoevsky"],
+  [183,"The Divine Comedy","Dante Alighieri"],
+  [184,"The Analects","Confucius"],
+  [185,"Mary Barton","Elizabeth Gaskell"],
+  [186,"The Idiot","Fyodor Dostoevsky"],
+  [187,"Collected Stories","Ernest Hemingway"],
+  [188,"Speak, Memory","Vladimir Nabokov"],
+  [189,"Rights of Man; Common Sense","Thomas Paine"],
+  [190,"The Complete Short Stories","Evelyn Waugh"],
+  [191,"First Love and Other Stories","Ivan Turgenev"],
+  [192,"The Decline and Fall of the Roman Empire, Vols. IV–VI","Edward Gibbon"],
+  [193,"Histories, Vol. II","William Shakespeare"],
+  [194,"Symposium and Phaedrus","Plato"],
+  [195,"Can You Forgive Her?","Anthony Trollope"],
+  [196,"Collected Stories","Thomas Mann"],
+  [197,"The Radetzky March","Joseph Roth"],
+  [198,"The Custom of the Country","Edith Wharton"],
+  [199,"Collected Stories","Rudyard Kipling"],
+  [200,"Martin Chuzzlewit","Charles Dickens"],
+  [201,"The Reef","Edith Wharton"],
+  [202,"The Age of Innocence","Edith Wharton"],
+  [203,"Kim","Rudyard Kipling"],
+  [204,"The Complete English Works","George Herbert"],
+  [205,"Comedies, Vol. I","William Shakespeare"],
+  [206,"Uncle Tom's Cabin","Harriet Beecher Stowe"],
+  [207,"The Man Who Loved Children","Christina Stead"],
+  [208,"The Last Chronicle of Barset","Anthony Trollope"],
+  [209,"The Old Curiosity Shop","Charles Dickens"],
+  [210,"Rob Roy","Walter Scott"],
+  [211,"The Pickwick Papers","Charles Dickens"],
+  [212,"The Bell Jar","Sylvia Plath"],
+  [213,"A House for Mr Biswas","V.S. Naipaul"],
+  [214,"Rabbit Angstrom","John Updike"],
+  [215,"The Adventures of Augie March","Saul Bellow"],
+  [216,"Song of Solomon","Toni Morrison"],
+  [217,"Midnight's Children","Salman Rushdie"],
+  [218,"The Periodic Table","Primo Levi"],
+  [219,"One Day in the Life of Ivan Denisovich","Alexander Solzhenitsyn"],
+  [220,"Catch-22","Joseph Heller"],
+  [221,"Collected Shorter Fiction, Vols. I & II","Leo Tolstoy"],
+  [222,"If This Is a Man; The Truce","Primo Levi"],
+  [223,"One Hundred Years of Solitude","Gabriel García Márquez"],
+  [224,"Piers Plowman; Sir Gawain and the Green Knight; Pearl; Sir Orfeo","William Langland et al."],
+  [225,"Sanditon and Other Stories","Jane Austen"],
+  [226,"Comedies, Vol. II","William Shakespeare"],
+  [227,"This Side of Paradise","F. Scott Fitzgerald"],
+  [228,"My Ántonia","Willa Cather"],
+  [229,"Romances","William Shakespeare"],
+  [230,"The Wings of the Dove","Henry James"],
+  [231,"The Memoirs of Hector Berlioz","Hector Berlioz"],
+  [232,"Complete Shorter Fiction","Herman Melville"],
+  [233,"The Woodlanders","Thomas Hardy"],
+  [234,"The Histories","Herodotus"],
+  [235,"Love in the Time of Cholera","Gabriel García Márquez"],
+  [236,"Molloy; Malone Dies; The Unnamable","Samuel Beckett"],
+  [237,"The Small House at Allington","Anthony Trollope"],
+  [238,"Phineas Finn","Anthony Trollope"],
+  [239,"Les Misérables","Victor Hugo"],
+  [240,"The New Testament","King James Bible"],
+  [241,"The Book of Common Prayer","Thomas Cranmer"],
+  [242,"Essays","George Orwell"],
+  [243,"Collected Shorter Fiction, Vols. I & II","Leo Tolstoy"],
+  [244,"The Collected Stories, Vols. I & II","Henry James"],
+  [245,"Poems","William Wordsworth"],
+  [246,"Selected Works","Johann Wolfgang von Goethe"],
+  [247,"The Bookshop; The Gate of Angels; The Blue Flower","Penelope Fitzgerald"],
+  [248,"The Cairo Trilogy","Naguib Mahfouz"],
+  [249,"Zeno's Conscience","Italo Svevo"],
+  [250,"In Search of Lost Time","Marcel Proust"],
+  [251,"The Collected Stories","Alexander Pushkin"],
+  [252,"A Handful of Dust","Evelyn Waugh"],
+  [253,"A Journey to the Western Islands of Scotland","Johnson and Boswell"],
+  [254,"The Idiot","Fyodor Dostoevsky"],
+  [255,"The Big Sleep; Farewell, My Lovely; The High Window","Raymond Chandler"],
+  [256,"The Lady in the Lake; The Little Sister; The Long Goodbye; Playback","Raymond Chandler"],
+  [257,"Collected Stories","Raymond Chandler"],
+  [258,"The Origin of Species; Voyage of the Beagle","Charles Darwin"],
+  [259,"The Complete Works","Michel de Montaigne"],
+  [260,"The Oresteia","Aeschylus"],
+  [261,"The Border Trilogy","Cormac McCarthy"],
+  [262,"The Talented Mr Ripley; Ripley Under Ground; Ripley's Game","Patricia Highsmith"],
+  [263,"The Maltese Falcon; The Thin Man; Red Harvest","Dashiell Hammett"],
+  [264,"The Complete Henry Bech","John Updike"],
+  [265,"Black Mischief; Scoop; The Loved One; The Ordeal of Gilbert Pinfold","Evelyn Waugh"],
+  [266,"Waugh Abroad: Collected Travel Writing","Evelyn Waugh"],
+  [267,"The Postman Always Rings Twice; Double Indemnity; Mildred Pierce and Selected Stories","James M. Cain"],
+  [268,"Beloved","Toni Morrison"],
+  [269,"Offshore; Human Voices; The Beginning of Spring","Penelope Fitzgerald"],
+  [270,"The Adolescent","Fyodor Dostoevsky"],
+  [271,"Notes from Underground","Fyodor Dostoevsky"],
+  [272,"Pnin","Vladimir Nabokov"],
+  [273,"Decline and Fall; Vile Bodies; Put Out More Flags","Evelyn Waugh"],
+  [274,"The Prime of Miss Jean Brodie; The Girls of Slender Means; The Driver's Seat; The Only Problem","Muriel Spark"],
+  [275,"Collected Stories","W. Somerset Maugham"],
+  [276,"The Complete Short Novels","Anton Chekhov"],
+  [277,"The Plague; The Fall; Exile and the Kingdom; Selected Essays","Albert Camus"],
+  [278,"Praeterita","John Ruskin"],
+  [279,"Dead Souls","Nikolai Gogol"],
+  [280,"The House of the Spirits","Isabel Allende"],
+  [281,"The General in His Labyrinth","Gabriel García Márquez"],
+  [282,"The Mystery of Edwin Drood","Charles Dickens"],
+  [283,"The Audubon Reader","John James Audubon"],
+  [284,"The Woman Warrior; China Men","Maxine Hong Kingston"],
+  [285,"Joseph and His Brothers","Thomas Mann"],
+  [286,"The Garden of the Finzi-Continis","Giorgio Bassani"],
+  [287,"The Magic Mountain","Thomas Mann"],
+  [288,"History of My Life","Giacomo Casanova"],
+  [289,"Diary","John Evelyn"],
+  [290,"Shirley and The Professor","Charlotte Brontë"],
+  [291,"Swami and Friends; The Bachelor of Arts; The Dark Room; The English Teacher","R.K. Narayan"],
+  [292,"Mr Sampath; The Financial Expert; Waiting for the Mahatma","R.K. Narayan"],
+  [293,"The Double and The Gambler","Fyodor Dostoevsky"],
+  [294,"Barnaby Rudge","Charles Dickens"],
+  [295,"The Raj Quartet, Vols. I & II","Paul Scott"],
+  [296,"The Raj Quartet, Vols. III & IV","Paul Scott"],
+  [297,"The Name of the Rose","Umberto Eco"],
+  [298,"Collected Stories","Roald Dahl"],
+  [299,"The Handmaid's Tale","Margaret Atwood"],
+  [300,"Carried Away","Alice Munro"],
+];
+
+</script>
+</body>
+</html>
