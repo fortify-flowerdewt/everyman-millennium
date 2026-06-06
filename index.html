@@ -307,8 +307,7 @@ const db = getFirestore(app);
 const PIN_KEY = 'everyman_pin_hash_v2'; // v2: 6-digit PINs (old 4-digit hashes ignored)
 const SESSION_KEY = 'everyman_session';
 let currentPin = '';
-let isSettingPin = false;
-let confirmPin = '';
+let pendingNewPin = null; // set while confirming a brand-new PIN (one with no library yet)
 let currentUserId = null;
 let currentLibraryId = null; // = PIN hash; the key your data is stored under, shared across devices
 let collData = {};
@@ -335,8 +334,7 @@ function setSyncStatus(state) {
 // ── BOOT ──
 onAuthStateChanged(auth, async (user) => {
   document.getElementById('loading-overlay').classList.add('hidden');
-  // Decide set-vs-enter from whether a PIN hash exists, NOT from whether a
-  // persisted anonymous session happens to be signed in.
+  // Fast path: this device has a remembered, unlocked session — go straight in.
   const storedHash = localStorage.getItem(PIN_KEY);
   const session = sessionStorage.getItem(SESSION_KEY);
   if (user && session === 'ok' && storedHash) {
@@ -344,47 +342,31 @@ onAuthStateChanged(auth, async (user) => {
     currentLibraryId = storedHash;
     showApp(user.uid);
   } else {
-    showPinScreen(!storedHash); // no PIN saved → set mode; otherwise → enter mode
+    showPinScreen(); // single "Enter your PIN" prompt on every device
   }
 });
 
 // ── PIN SCREEN ──
+// Single 6-digit entry on every device. On submit we sign in anonymously and
+// check Firestore: if a library already exists for this PIN, open it; if not,
+// ask the user to confirm the PIN once, then create a new library.
 window.pinKey = function(digit) {
-  if (isSettingPin) {
-    if (confirmPin !== null && typeof confirmPin === 'string' && confirmPin.length >= 0 && currentPin.length === 6) {
-      // We're in confirm mode
-      confirmPin += digit;
-      updateDots(confirmPin.length);
-      if (confirmPin.length === 6) handleConfirmPin();
-    } else {
-      currentPin += digit;
-      updateDots(currentPin.length);
-      if (currentPin.length === 6) {
-        document.getElementById('pin-label').textContent = 'Confirm your PIN';
-        document.getElementById('pin-hint').textContent = '';
-        confirmPin = '';
-        updateDots(0);
-      }
-    }
-  } else {
-    currentPin += digit;
-    updateDots(currentPin.length);
-    if (currentPin.length === 6) handleEnterPin();
+  if (currentPin.length >= 6) return;
+  currentPin += digit;
+  updateDots(currentPin.length);
+  if (currentPin.length === 6) {
+    if (pendingNewPin === null) submitPin();
+    else confirmNewPin();
   }
 }
 
 window.pinBackspace = function() {
-  if (isSettingPin && confirmPin !== '' && currentPin.length === 6) {
-    confirmPin = confirmPin.slice(0, -1);
-    updateDots(confirmPin.length);
-  } else {
-    currentPin = currentPin.slice(0, -1);
-    updateDots(currentPin.length);
-  }
+  currentPin = currentPin.slice(0, -1);
+  updateDots(currentPin.length);
 }
 
 window.pinClear = function() {
-  currentPin = ''; confirmPin = '';
+  currentPin = '';
   updateDots(0);
   document.getElementById('pin-error').textContent = '';
 }
@@ -395,82 +377,96 @@ function updateDots(n) {
   }
 }
 
-function showPinScreen(setup) {
-  isSettingPin = setup;
-  confirmPin = setup ? '' : null;
+function setPinPrompt(label, hint) {
+  document.getElementById('pin-label').textContent = label;
+  document.getElementById('pin-hint').textContent = hint || '';
+}
+
+function showPinScreen() {
+  pendingNewPin = null;
   currentPin = '';
   updateDots(0);
   document.getElementById('pin-screen').classList.remove('hidden');
   document.getElementById('app').style.display = 'none';
   document.getElementById('pin-error').textContent = '';
-  if (setup) {
-    document.getElementById('pin-label').textContent = 'Set a PIN to protect your library';
-    document.getElementById('pin-hint').textContent = 'Choose a 6-digit PIN. You\'ll need this to access your collection on any device.';
-  } else {
-    document.getElementById('pin-label').textContent = 'Enter your PIN';
-    document.getElementById('pin-hint').textContent = '';
-  }
+  setPinPrompt('Enter your PIN', 'Use the same 6-digit PIN on any device to reach your library.');
 }
 
-async function handleConfirmPin() {
-  if (confirmPin !== currentPin) {
-    document.getElementById('pin-error').textContent = 'PINs don\'t match. Try again.';
-    currentPin = ''; confirmPin = '';
-    updateDots(0);
-    document.getElementById('pin-label').textContent = 'Set a PIN to protect your library';
+// Ensure we have an anonymous Firebase session (Firestore access needs auth).
+async function ensureSignedIn() {
+  if (auth.currentUser) return auth.currentUser;
+  return (await signInAnonymously(auth)).user;
+}
+
+async function libraryExists(hash) {
+  const ref = doc(db, 'libraries', hash, 'data', 'collection');
+  const snap = await getDoc(ref);
+  return snap.exists();
+}
+
+async function enterLibrary(user, hash) {
+  localStorage.setItem(PIN_KEY, hash);
+  sessionStorage.setItem(SESSION_KEY, 'ok');
+  currentUserId = user.uid;
+  currentLibraryId = hash;
+  document.getElementById('pin-screen').classList.add('hidden');
+  showApp(user.uid);
+}
+
+async function submitPin() {
+  const pin = currentPin;
+  document.getElementById('pin-error').textContent = '';
+  let user, exists;
+  try {
+    user = await ensureSignedIn();
+    exists = await libraryExists(await hashPin(pin));
+  } catch (e) {
+    document.getElementById('pin-error').textContent = 'Connection problem. Please try again.';
+    currentPin = ''; updateDots(0);
     return;
   }
-  // PINs match — sign in anonymously and store hash
-  try {
-    const hash = await hashPin(currentPin);
-    const cred = await signInAnonymously(auth);
-    localStorage.setItem(PIN_KEY, hash);
-    sessionStorage.setItem(SESSION_KEY, 'ok');
-    currentUserId = cred.user.uid;
-    currentLibraryId = hash;
-    document.getElementById('pin-screen').classList.add('hidden');
-    showApp(cred.user.uid);
-  } catch(e) {
-    document.getElementById('pin-error').textContent = 'Error setting up. Please try again.';
-    currentPin = ''; confirmPin = '';
-    updateDots(0);
-  }
-}
-
-async function handleEnterPin() {
-  const storedHash = localStorage.getItem(PIN_KEY);
-  const hash = await hashPin(currentPin);
-  if (hash !== storedHash) {
-    document.getElementById('pin-error').textContent = 'Incorrect PIN.';
+  const hash = await hashPin(pin);
+  if (exists) {
+    enterLibrary(user, hash);
+  } else {
+    // No library for this PIN — confirm before creating a new one.
+    pendingNewPin = pin;
     currentPin = '';
     updateDots(0);
+    setPinPrompt('New PIN — confirm it', 'No library found for that PIN. Re-enter it to create a new library.');
+  }
+}
+
+async function confirmNewPin() {
+  const confirm = currentPin;
+  if (confirm !== pendingNewPin) {
+    pendingNewPin = null;
+    currentPin = '';
+    updateDots(0);
+    document.getElementById('pin-error').textContent = 'PINs didn\'t match. Start again.';
+    setPinPrompt('Enter your PIN', 'Use the same 6-digit PIN on any device to reach your library.');
     return;
   }
-  // PIN correct
-  sessionStorage.setItem(SESSION_KEY, 'ok');
-  currentLibraryId = hash;
-  // If already signed in, show app; otherwise sign in
-  if (auth.currentUser) {
-    currentUserId = auth.currentUser.uid;
-    document.getElementById('pin-screen').classList.add('hidden');
-    showApp(auth.currentUser.uid);
-  } else {
-    try {
-      const cred = await signInAnonymously(auth);
-      currentUserId = cred.user.uid;
-      document.getElementById('pin-screen').classList.add('hidden');
-      showApp(cred.user.uid);
-    } catch(e) {
-      document.getElementById('pin-error').textContent = 'Sign-in failed. Check your connection.';
-      currentPin = ''; updateDots(0);
-    }
+  const pin = pendingNewPin;
+  pendingNewPin = null;
+  try {
+    const user = await ensureSignedIn();
+    const hash = await hashPin(pin);
+    // Create the library doc so future logins detect it as existing.
+    const ref = doc(db, 'libraries', hash, 'data', 'collection');
+    if (!(await getDoc(ref)).exists()) await setDoc(ref, { books: {} });
+    enterLibrary(user, hash);
+  } catch (e) {
+    document.getElementById('pin-error').textContent = 'Could not create the library. Please try again.';
+    currentPin = ''; updateDots(0);
+    setPinPrompt('Enter your PIN', 'Use the same 6-digit PIN on any device to reach your library.');
   }
 }
 
 window.signOutUser = function() {
   sessionStorage.removeItem(SESSION_KEY);
   if (unsubscribe) unsubscribe();
-  showPinScreen(false);
+  showPinScreen();
 }
 
 // ── APP ──
