@@ -481,23 +481,29 @@ async function showApp(uid) {
   // Data is keyed by the PIN hash (currentLibraryId) so it's shared across devices.
   const docRef = doc(db, 'libraries', currentLibraryId, 'data', 'collection');
   try {
-    let snap = await getDoc(docRef);
-    // One-time migration: if this PIN has no library yet but the old per-device
-    // anonymous account had data, copy it into the new PIN-keyed location.
-    if (!snap.exists() && uid) {
-      const legacyRef = doc(db, 'users', uid, 'data', 'collection');
-      const legacy = await getDoc(legacyRef);
-      const legacyBooks = legacy.exists() ? (legacy.data().books || {}) : {};
-      if (Object.keys(legacyBooks).length) {
-        await setDoc(docRef, { books: legacyBooks });
-        snap = await getDoc(docRef);
+    const snap = await getDoc(docRef);
+    let books = snap.exists() ? (snap.data().books || {}) : {};
+    // Migration: if this PIN's library is empty, try to pull data from the old
+    // per-device anonymous account (users/<uid>/data/collection) and copy it in.
+    if (Object.keys(books).length === 0 && uid) {
+      try {
+        const legacyRef = doc(db, 'users', uid, 'data', 'collection');
+        const legacy = await getDoc(legacyRef);
+        const legacyBooks = legacy.exists() ? (legacy.data().books || {}) : {};
+        if (Object.keys(legacyBooks).length) {
+          await setDoc(docRef, { books: legacyBooks });
+          books = legacyBooks;
+          console.info('[migrate] copied', Object.keys(legacyBooks).length, 'books from legacy account', uid);
+        } else {
+          console.info('[migrate] no legacy data found under account', uid);
+        }
+      } catch (mig) {
+        console.error('[migrate] FAILED — likely Firestore rules block reads of /users/<uid>. Error:', mig);
       }
     }
-    if (snap.exists()) {
-      collData = snap.data().books || {};
-    }
+    collData = books;
   } catch(e) {
-    console.warn('Initial load failed, using empty data');
+    console.warn('[load] initial load failed, using empty data:', e);
   }
 
   renderGrid();
