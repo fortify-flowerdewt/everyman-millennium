@@ -335,24 +335,16 @@ function setSyncStatus(state) {
 // ── BOOT ──
 onAuthStateChanged(auth, async (user) => {
   document.getElementById('loading-overlay').classList.add('hidden');
-  if (user) {
-    // Check session PIN
-    const session = sessionStorage.getItem(SESSION_KEY);
-    if (session === 'ok') {
-      currentUserId = user.uid;
-      currentLibraryId = localStorage.getItem(PIN_KEY);
-      showApp(user.uid);
-    } else {
-      // Signed in but no session — show PIN
-      showPinScreen(false);
-    }
+  // Decide set-vs-enter from whether a PIN hash exists, NOT from whether a
+  // persisted anonymous session happens to be signed in.
+  const storedHash = localStorage.getItem(PIN_KEY);
+  const session = sessionStorage.getItem(SESSION_KEY);
+  if (user && session === 'ok' && storedHash) {
+    currentUserId = user.uid;
+    currentLibraryId = storedHash;
+    showApp(user.uid);
   } else {
-    const storedHash = localStorage.getItem(PIN_KEY);
-    if (!storedHash) {
-      showPinScreen(true); // first time — set PIN
-    } else {
-      showPinScreen(false); // returning — enter PIN
-    }
+    showPinScreen(!storedHash); // no PIN saved → set mode; otherwise → enter mode
   }
 });
 
