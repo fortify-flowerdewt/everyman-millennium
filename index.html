@@ -180,7 +180,7 @@
       <div class="stat"><div class="stat-num" id="stat-owned">0</div><div class="stat-label">owned</div></div>
       <div class="stat"><div class="stat-num" id="stat-read">0</div><div class="stat-label">read</div></div>
       <div class="stat"><div class="stat-num" id="stat-spent">£0</div><div class="stat-label">spent</div></div>
-      <div class="stat"><div class="stat-num" id="stat-total">300</div><div class="stat-label">total</div></div>
+      <div class="stat"><div class="stat-num" id="stat-total">250</div><div class="stat-label">total</div></div>
       <div class="header-actions">
         <div class="sync-status"><div class="sync-dot synced" id="sync-dot"></div><span id="sync-text">Synced</span></div>
         <button class="btn-sm" onclick="signOutUser()">Lock</button>
@@ -191,7 +191,7 @@
   <div class="progress-wrap">
     <div style="font-size:0.78rem;color:var(--ink-3);min-width:90px">Collection progress</div>
     <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
-    <div class="progress-label" id="progress-label">0 / 300</div>
+    <div class="progress-label" id="progress-label">0 / 250</div>
   </div>
 
   <div class="controls">
@@ -570,6 +570,7 @@ function updateStats() {
   document.getElementById('stat-owned').textContent = owned;
   document.getElementById('stat-read').textContent = read;
   document.getElementById('stat-spent').textContent = '£' + spent.toFixed(2);
+  document.getElementById('stat-total').textContent = BOOKS_RAW.length;
   const pct = owned / BOOKS_RAW.length * 100;
   document.getElementById('progress-fill').style.width = pct + '%';
   document.getElementById('progress-label').textContent = owned + ' / ' + BOOKS_RAW.length;
@@ -872,56 +873,6 @@ const BOOKS_RAW = [
   [248,"The Cairo Trilogy","Naguib Mahfouz"],
   [249,"Zeno's Conscience","Italo Svevo"],
   [250,"In Search of Lost Time","Marcel Proust"],
-  [251,"The Collected Stories","Alexander Pushkin"],
-  [252,"A Handful of Dust","Evelyn Waugh"],
-  [253,"A Journey to the Western Islands of Scotland","Johnson and Boswell"],
-  [254,"The Idiot","Fyodor Dostoevsky"],
-  [255,"The Big Sleep; Farewell, My Lovely; The High Window","Raymond Chandler"],
-  [256,"The Lady in the Lake; The Little Sister; The Long Goodbye; Playback","Raymond Chandler"],
-  [257,"Collected Stories","Raymond Chandler"],
-  [258,"The Origin of Species; Voyage of the Beagle","Charles Darwin"],
-  [259,"The Complete Works","Michel de Montaigne"],
-  [260,"The Oresteia","Aeschylus"],
-  [261,"The Border Trilogy","Cormac McCarthy"],
-  [262,"The Talented Mr Ripley; Ripley Under Ground; Ripley's Game","Patricia Highsmith"],
-  [263,"The Maltese Falcon; The Thin Man; Red Harvest","Dashiell Hammett"],
-  [264,"The Complete Henry Bech","John Updike"],
-  [265,"Black Mischief; Scoop; The Loved One; The Ordeal of Gilbert Pinfold","Evelyn Waugh"],
-  [266,"Waugh Abroad: Collected Travel Writing","Evelyn Waugh"],
-  [267,"The Postman Always Rings Twice; Double Indemnity; Mildred Pierce and Selected Stories","James M. Cain"],
-  [268,"Beloved","Toni Morrison"],
-  [269,"Offshore; Human Voices; The Beginning of Spring","Penelope Fitzgerald"],
-  [270,"The Adolescent","Fyodor Dostoevsky"],
-  [271,"Notes from Underground","Fyodor Dostoevsky"],
-  [272,"Pnin","Vladimir Nabokov"],
-  [273,"Decline and Fall; Vile Bodies; Put Out More Flags","Evelyn Waugh"],
-  [274,"The Prime of Miss Jean Brodie; The Girls of Slender Means; The Driver's Seat; The Only Problem","Muriel Spark"],
-  [275,"Collected Stories","W. Somerset Maugham"],
-  [276,"The Complete Short Novels","Anton Chekhov"],
-  [277,"The Plague; The Fall; Exile and the Kingdom; Selected Essays","Albert Camus"],
-  [278,"Praeterita","John Ruskin"],
-  [279,"Dead Souls","Nikolai Gogol"],
-  [280,"The House of the Spirits","Isabel Allende"],
-  [281,"The General in His Labyrinth","Gabriel García Márquez"],
-  [282,"The Mystery of Edwin Drood","Charles Dickens"],
-  [283,"The Audubon Reader","John James Audubon"],
-  [284,"The Woman Warrior; China Men","Maxine Hong Kingston"],
-  [285,"Joseph and His Brothers","Thomas Mann"],
-  [286,"The Garden of the Finzi-Continis","Giorgio Bassani"],
-  [287,"The Magic Mountain","Thomas Mann"],
-  [288,"History of My Life","Giacomo Casanova"],
-  [289,"Diary","John Evelyn"],
-  [290,"Shirley and The Professor","Charlotte Brontë"],
-  [291,"Swami and Friends; The Bachelor of Arts; The Dark Room; The English Teacher","R.K. Narayan"],
-  [292,"Mr Sampath; The Financial Expert; Waiting for the Mahatma","R.K. Narayan"],
-  [293,"The Double and The Gambler","Fyodor Dostoevsky"],
-  [294,"Barnaby Rudge","Charles Dickens"],
-  [295,"The Raj Quartet, Vols. I & II","Paul Scott"],
-  [296,"The Raj Quartet, Vols. III & IV","Paul Scott"],
-  [297,"The Name of the Rose","Umberto Eco"],
-  [298,"Collected Stories","Roald Dahl"],
-  [299,"The Handmaid's Tale","Margaret Atwood"],
-  [300,"Carried Away","Alice Munro"],
 ];
 
 </script>
