@@ -148,6 +148,8 @@
       <div class="pin-dot" id="d1"></div>
       <div class="pin-dot" id="d2"></div>
       <div class="pin-dot" id="d3"></div>
+      <div class="pin-dot" id="d4"></div>
+      <div class="pin-dot" id="d5"></div>
     </div>
     <div class="pin-keypad">
       <button class="pin-key" onclick="pinKey('1')">1</button>
@@ -302,12 +304,13 @@ const db = getFirestore(app);
 // So we use a simpler approach: store the PIN hash in localStorage and use a single
 // anonymous account per device, protected by PIN entry before showing the app.
 
-const PIN_KEY = 'everyman_pin_hash';
+const PIN_KEY = 'everyman_pin_hash_v2'; // v2: 6-digit PINs (old 4-digit hashes ignored)
 const SESSION_KEY = 'everyman_session';
 let currentPin = '';
 let isSettingPin = false;
 let confirmPin = '';
 let currentUserId = null;
+let currentLibraryId = null; // = PIN hash; the key your data is stored under, shared across devices
 let collData = {};
 let ownerFilter = 'all';
 let currentEdit = null;
@@ -337,6 +340,7 @@ onAuthStateChanged(auth, async (user) => {
     const session = sessionStorage.getItem(SESSION_KEY);
     if (session === 'ok') {
       currentUserId = user.uid;
+      currentLibraryId = localStorage.getItem(PIN_KEY);
       showApp(user.uid);
     } else {
       // Signed in but no session — show PIN
@@ -355,15 +359,15 @@ onAuthStateChanged(auth, async (user) => {
 // ── PIN SCREEN ──
 window.pinKey = function(digit) {
   if (isSettingPin) {
-    if (confirmPin !== null && typeof confirmPin === 'string' && confirmPin.length >= 0 && currentPin.length === 4) {
+    if (confirmPin !== null && typeof confirmPin === 'string' && confirmPin.length >= 0 && currentPin.length === 6) {
       // We're in confirm mode
       confirmPin += digit;
       updateDots(confirmPin.length);
-      if (confirmPin.length === 4) handleConfirmPin();
+      if (confirmPin.length === 6) handleConfirmPin();
     } else {
       currentPin += digit;
       updateDots(currentPin.length);
-      if (currentPin.length === 4) {
+      if (currentPin.length === 6) {
         document.getElementById('pin-label').textContent = 'Confirm your PIN';
         document.getElementById('pin-hint').textContent = '';
         confirmPin = '';
@@ -373,12 +377,12 @@ window.pinKey = function(digit) {
   } else {
     currentPin += digit;
     updateDots(currentPin.length);
-    if (currentPin.length === 4) handleEnterPin();
+    if (currentPin.length === 6) handleEnterPin();
   }
 }
 
 window.pinBackspace = function() {
-  if (isSettingPin && confirmPin !== '' && currentPin.length === 4) {
+  if (isSettingPin && confirmPin !== '' && currentPin.length === 6) {
     confirmPin = confirmPin.slice(0, -1);
     updateDots(confirmPin.length);
   } else {
@@ -394,7 +398,7 @@ window.pinClear = function() {
 }
 
 function updateDots(n) {
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 6; i++) {
     document.getElementById('d' + i).classList.toggle('filled', i < n);
   }
 }
@@ -409,7 +413,7 @@ function showPinScreen(setup) {
   document.getElementById('pin-error').textContent = '';
   if (setup) {
     document.getElementById('pin-label').textContent = 'Set a PIN to protect your library';
-    document.getElementById('pin-hint').textContent = 'Choose a 4-digit PIN. You\'ll need this to access your collection on any device.';
+    document.getElementById('pin-hint').textContent = 'Choose a 6-digit PIN. You\'ll need this to access your collection on any device.';
   } else {
     document.getElementById('pin-label').textContent = 'Enter your PIN';
     document.getElementById('pin-hint').textContent = '';
@@ -431,6 +435,7 @@ async function handleConfirmPin() {
     localStorage.setItem(PIN_KEY, hash);
     sessionStorage.setItem(SESSION_KEY, 'ok');
     currentUserId = cred.user.uid;
+    currentLibraryId = hash;
     document.getElementById('pin-screen').classList.add('hidden');
     showApp(cred.user.uid);
   } catch(e) {
@@ -451,6 +456,7 @@ async function handleEnterPin() {
   }
   // PIN correct
   sessionStorage.setItem(SESSION_KEY, 'ok');
+  currentLibraryId = hash;
   // If already signed in, show app; otherwise sign in
   if (auth.currentUser) {
     currentUserId = auth.currentUser.uid;
@@ -480,10 +486,21 @@ async function showApp(uid) {
   document.getElementById('pin-screen').classList.add('hidden');
   document.getElementById('app').style.display = 'block';
 
-  // Load data from Firestore, then subscribe to real-time updates
-  const docRef = doc(db, 'users', uid, 'data', 'collection');
+  // Data is keyed by the PIN hash (currentLibraryId) so it's shared across devices.
+  const docRef = doc(db, 'libraries', currentLibraryId, 'data', 'collection');
   try {
-    const snap = await getDoc(docRef);
+    let snap = await getDoc(docRef);
+    // One-time migration: if this PIN has no library yet but the old per-device
+    // anonymous account had data, copy it into the new PIN-keyed location.
+    if (!snap.exists() && uid) {
+      const legacyRef = doc(db, 'users', uid, 'data', 'collection');
+      const legacy = await getDoc(legacyRef);
+      const legacyBooks = legacy.exists() ? (legacy.data().books || {}) : {};
+      if (Object.keys(legacyBooks).length) {
+        await setDoc(docRef, { books: legacyBooks });
+        snap = await getDoc(docRef);
+      }
+    }
     if (snap.exists()) {
       collData = snap.data().books || {};
     }
@@ -511,7 +528,7 @@ function scheduleSave() {
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(async () => {
     try {
-      const docRef = doc(db, 'users', currentUserId, 'data', 'collection');
+      const docRef = doc(db, 'libraries', currentLibraryId, 'data', 'collection');
       await setDoc(docRef, { books: collData });
       setSyncStatus('synced');
     } catch(e) {
