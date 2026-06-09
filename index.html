@@ -70,6 +70,16 @@
   .progress-fill { height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-mid)); border-radius: 4px; transition: width 0.4s ease; }
   .progress-label { font-size: 0.8rem; color: var(--ink-3); min-width: 80px; text-align: right; }
 
+  .chart-wrap { background: var(--parchment-2); border-bottom: 1px solid var(--border); padding: 1.1rem 2.5rem 1.4rem; }
+  .chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: 0.6rem; flex-wrap: wrap; }
+  .chart-head h3 { font-family: 'Libre Baskerville', serif; font-size: 0.95rem; color: var(--ink); font-weight: 700; }
+  .chart-eta { font-size: 0.78rem; color: var(--ink-2); }
+  .chart-eta strong { color: var(--crimson); font-family: 'Libre Baskerville', serif; }
+  .chart-area svg { display: block; width: 100%; height: auto; }
+  .chart-empty { font-size: 0.82rem; color: var(--ink-3); padding: 1.2rem 0; font-style: italic; }
+  .chart-toggle { background: none; border: none; color: var(--ink-3); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; cursor: pointer; }
+  .chart-toggle:hover { color: var(--gold); }
+
   /* ── CONTROLS ── */
   .controls { padding: 1.1rem 2.5rem; background: var(--parchment-2); border-bottom: 1px solid var(--border); display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
   .controls input[type="text"], .controls select { font-family: 'DM Sans', sans-serif; font-size: 0.875rem; border: 1px solid var(--border); background: var(--parchment); color: var(--ink); padding: 0.5rem 0.75rem; border-radius: 4px; outline: none; transition: border-color 0.15s; }
@@ -180,6 +190,8 @@
       <div class="stat"><div class="stat-num" id="stat-owned">0</div><div class="stat-label">owned</div></div>
       <div class="stat"><div class="stat-num" id="stat-read">0</div><div class="stat-label">read</div></div>
       <div class="stat"><div class="stat-num" id="stat-spent">£0</div><div class="stat-label">spent</div></div>
+      <div class="stat"><div class="stat-num" id="stat-avg">£0</div><div class="stat-label">avg price</div></div>
+      <div class="stat"><div class="stat-num" id="stat-projected">£0</div><div class="stat-label">projected total</div></div>
       <div class="stat"><div class="stat-num" id="stat-total">250</div><div class="stat-label">total</div></div>
       <div class="header-actions">
         <div class="sync-status"><div class="sync-dot synced" id="sync-dot"></div><span id="sync-text">Synced</span></div>
@@ -192,6 +204,14 @@
     <div style="font-size:0.78rem;color:var(--ink-3);min-width:90px">Collection progress</div>
     <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
     <div class="progress-label" id="progress-label">0 / 250</div>
+  </div>
+
+  <div class="chart-wrap" id="chart-wrap">
+    <div class="chart-head">
+      <h3>Acquisition progress</h3>
+      <div class="chart-eta" id="chart-eta"></div>
+    </div>
+    <div class="chart-area" id="chart-area"></div>
   </div>
 
   <div class="controls">
@@ -571,9 +591,118 @@ function updateStats() {
   document.getElementById('stat-read').textContent = read;
   document.getElementById('stat-spent').textContent = '£' + spent.toFixed(2);
   document.getElementById('stat-total').textContent = BOOKS_RAW.length;
+  // Average price paid (over books with a recorded price > 0) and projected
+  // total to complete the collection: actual spent + avg × books still needed.
+  const pricedCount = all.filter(b => (parseFloat(b.price) || 0) > 0).length;
+  const avg = pricedCount ? spent / pricedCount : 0;
+  const acquired = all.filter(b => b.status === 'owned' || b.status === 'reading' || b.status === 'read').length;
+  const remaining = Math.max(0, BOOKS_RAW.length - acquired);
+  const projected = spent + avg * remaining;
+  document.getElementById('stat-avg').textContent = '£' + avg.toFixed(2);
+  document.getElementById('stat-projected').textContent = '£' + projected.toFixed(2);
   const pct = owned / BOOKS_RAW.length * 100;
   document.getElementById('progress-fill').style.width = pct + '%';
   document.getElementById('progress-label').textContent = owned + ' / ' + BOOKS_RAW.length;
+  renderChart();
+}
+
+function fmtDate(t) {
+  return new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+// Line chart: cumulative acquisitions over time, with a linear projection to the goal.
+function renderChart() {
+  const area = document.getElementById('chart-area');
+  const eta = document.getElementById('chart-eta');
+  if (!area) return;
+  const goal = BOOKS_RAW.length;
+
+  // Acquired books that have a parseable acquisition date.
+  const times = [];
+  BOOKS_RAW.forEach(([num]) => {
+    const b = getBook(num);
+    if ((b.status === 'owned' || b.status === 'reading' || b.status === 'read') && b.date) {
+      const t = Date.parse(b.date);
+      if (!isNaN(t)) times.push(t);
+    }
+  });
+  times.sort((a, b) => a - b);
+
+  if (times.length === 0) {
+    area.innerHTML = '<div class="chart-empty">Add a “Date acquired” to the books you own to chart your progress over time.</div>';
+    eta.textContent = '';
+    return;
+  }
+
+  // Cumulative points (time, count).
+  const pts = times.map((t, i) => ({ t, n: i + 1 }));
+  const firstT = pts[0].t, lastT = pts[pts.length - 1].t, cur = pts.length;
+  const today = Date.now();
+
+  // Projection: average pace from first to last acquisition, extended to the goal.
+  let completionT = null, pacePerYear = 0;
+  if (cur >= goal) {
+    eta.innerHTML = '🎉 <strong>Collection complete!</strong>';
+  } else if (cur >= 2 && lastT > firstT) {
+    const pace = (cur - 1) / (lastT - firstT); // books per ms
+    pacePerYear = pace * 86400000 * 365.25;
+    completionT = lastT + (goal - cur) / pace;
+    eta.innerHTML = 'Est. completion <strong>' + fmtDate(completionT) + '</strong> · ~' + Math.round(pacePerYear) + ' books/yr at current pace';
+  } else {
+    eta.textContent = 'Add acquisition dates to at least two owned books to project a completion date.';
+  }
+
+  // Geometry.
+  const W = 820, H = 300, padL = 46, padR = 18, padT = 14, padB = 38;
+  const gx0 = padL, gx1 = W - padR, gy0 = H - padB, gy1 = padT;
+  const tMin = firstT;
+  const tMax = Math.max(today, completionT || lastT);
+  const X = t => gx0 + (gx1 - gx0) * (tMax === tMin ? 0 : (t - tMin) / (tMax - tMin));
+  const Y = n => gy0 + (gy1 - gy0) * (n / goal);
+
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Acquisition progress over time">';
+
+  // Horizontal gridlines + y labels.
+  const step = goal <= 50 ? 10 : goal <= 120 ? 25 : 50;
+  for (let g = 0; g <= goal; g += step) {
+    const y = Y(g);
+    svg += '<line x1="' + gx0 + '" y1="' + y + '" x2="' + gx1 + '" y2="' + y + '" stroke="#e0d7c9" stroke-width="1"/>';
+    svg += '<text x="' + (gx0 - 8) + '" y="' + (y + 3.5) + '" text-anchor="end" font-size="10" fill="#8a837a" font-family="DM Sans,sans-serif">' + g + '</text>';
+  }
+
+  // Goal line.
+  const gy = Y(goal);
+  svg += '<line x1="' + gx0 + '" y1="' + gy + '" x2="' + gx1 + '" y2="' + gy + '" stroke="#8b2020" stroke-width="1" stroke-dasharray="4 3" opacity="0.55"/>';
+
+  // Projection line (last actual point → goal at completion date).
+  if (completionT) {
+    svg += '<line x1="' + X(lastT) + '" y1="' + Y(cur) + '" x2="' + X(completionT) + '" y2="' + Y(goal) + '" stroke="#b8952a" stroke-width="1.5" stroke-dasharray="5 4" opacity="0.8"/>';
+    svg += '<circle cx="' + X(completionT) + '" cy="' + Y(goal) + '" r="3.5" fill="none" stroke="#8b2020" stroke-width="1.5"/>';
+    svg += '<text x="' + Math.min(X(completionT), gx1 - 2) + '" y="' + (Y(goal) - 7) + '" text-anchor="end" font-size="10" fill="#8b2020" font-family="DM Sans,sans-serif">' + fmtDate(completionT) + '</text>';
+  }
+
+  // Actual cumulative line (area + stroke).
+  const linePts = pts.map(p => X(p.t) + ',' + Y(p.n)).join(' ');
+  const areaPts = X(pts[0].t) + ',' + gy0 + ' ' + linePts + ' ' + X(lastT) + ',' + gy0;
+  svg += '<polygon points="' + areaPts + '" fill="#b8952a" opacity="0.10"/>';
+  svg += '<polyline points="' + linePts + '" fill="none" stroke="#b8952a" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+
+  // "Today" marker.
+  if (today >= tMin && today <= tMax) {
+    svg += '<line x1="' + X(today) + '" y1="' + gy1 + '" x2="' + X(today) + '" y2="' + gy0 + '" stroke="#8a837a" stroke-width="1" stroke-dasharray="2 3" opacity="0.5"/>';
+    svg += '<text x="' + X(today) + '" y="' + (gy1 + 8) + '" text-anchor="middle" font-size="9" fill="#8a837a" font-family="DM Sans,sans-serif">today</text>';
+  }
+
+  // Latest point dot.
+  svg += '<circle cx="' + X(lastT) + '" cy="' + Y(cur) + '" r="3.5" fill="#b8952a"/>';
+
+  // X axis baseline + end date labels.
+  svg += '<line x1="' + gx0 + '" y1="' + gy0 + '" x2="' + gx1 + '" y2="' + gy0 + '" stroke="#d8cfc4" stroke-width="1"/>';
+  svg += '<text x="' + gx0 + '" y="' + (gy0 + 16) + '" text-anchor="start" font-size="10" fill="#8a837a" font-family="DM Sans,sans-serif">' + fmtDate(firstT) + '</text>';
+  svg += '<text x="' + gx1 + '" y="' + (gy0 + 16) + '" text-anchor="end" font-size="10" fill="#8a837a" font-family="DM Sans,sans-serif">' + fmtDate(tMax) + '</text>';
+
+  svg += '</svg>';
+  area.innerHTML = svg;
 }
 
 function getBook(num) { return collData[num] || { status: 'none', price: '', source: '', date: '', condition: '', notes: '' }; }
