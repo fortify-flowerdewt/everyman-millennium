@@ -70,7 +70,13 @@
   .progress-fill { height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-mid)); border-radius: 4px; transition: width 0.4s ease; }
   .progress-label { font-size: 0.8rem; color: var(--ink-3); min-width: 80px; text-align: right; }
 
-  .chart-wrap { background: var(--parchment-2); border-bottom: 1px solid var(--border); padding: 1.1rem 2.5rem 1.4rem; }
+  .tab-bar { display: flex; gap: 0.25rem; padding: 0 2.5rem; background: var(--parchment-2); border-bottom: 1px solid var(--border); }
+  .tab-btn { font-family: 'DM Sans', sans-serif; font-size: 0.82rem; letter-spacing: 0.04em; color: var(--ink-3); background: none; border: none; border-bottom: 2px solid transparent; padding: 0.7rem 0.9rem; cursor: pointer; margin-bottom: -1px; }
+  .tab-btn:hover { color: var(--ink); }
+  .tab-btn.active { color: var(--ink); border-bottom-color: var(--gold); }
+
+  .chart-wrap { background: var(--parchment-2); padding: 1.1rem 2.5rem 1.4rem; }
+  .chart-area { max-width: 820px; margin: 0 auto; }
   .chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: 0.6rem; flex-wrap: wrap; }
   .chart-head h3 { font-family: 'Libre Baskerville', serif; font-size: 0.95rem; color: var(--ink); font-weight: 700; }
   .chart-eta { font-size: 0.78rem; color: var(--ink-2); }
@@ -206,37 +212,46 @@
     <div class="progress-label" id="progress-label">0 / 250</div>
   </div>
 
-  <div class="chart-wrap" id="chart-wrap">
-    <div class="chart-head">
-      <h3>Acquisition progress</h3>
-      <div class="chart-eta" id="chart-eta"></div>
-    </div>
-    <div class="chart-area" id="chart-area"></div>
+  <div class="tab-bar" role="tablist">
+    <button class="tab-btn active" id="tab-btn-library" onclick="switchTab('library')">Library</button>
+    <button class="tab-btn" id="tab-btn-progress" onclick="switchTab('progress')">Progress</button>
   </div>
 
-  <div class="controls">
-    <input type="text" id="search-input" placeholder="Search by title or author…" oninput="renderGrid()">
-    <select id="filter-status" onchange="renderGrid()">
-      <option value="all">All statuses</option>
-      <option value="owned">Owned</option>
-      <option value="reading">Reading</option>
-      <option value="read">Read</option>
-      <option value="wishlist">Wishlist</option>
-      <option value="none">Not yet acquired</option>
-    </select>
-    <select id="sort-by" onchange="renderGrid()">
-      <option value="number">Sort by number</option>
-      <option value="title">Sort by title</option>
-      <option value="author">Sort by author</option>
-    </select>
-    <div class="filter-group">
-      <button class="filter-btn active" onclick="filterOwned(this,'all')">All</button>
-      <button class="filter-btn" onclick="filterOwned(this,'owned')">In collection</button>
-      <button class="filter-btn" onclick="filterOwned(this,'unowned')">Needed</button>
+  <div id="tab-library" class="tab-panel">
+    <div class="controls">
+      <input type="text" id="search-input" placeholder="Search by title or author…" oninput="renderGrid()">
+      <select id="filter-status" onchange="renderGrid()">
+        <option value="all">All statuses</option>
+        <option value="owned">Owned</option>
+        <option value="reading">Reading</option>
+        <option value="read">Read</option>
+        <option value="wishlist">Wishlist</option>
+        <option value="none">Not yet acquired</option>
+      </select>
+      <select id="sort-by" onchange="renderGrid()">
+        <option value="number">Sort by number</option>
+        <option value="title">Sort by title</option>
+        <option value="author">Sort by author</option>
+      </select>
+      <div class="filter-group">
+        <button class="filter-btn active" onclick="filterOwned(this,'all')">All</button>
+        <button class="filter-btn" onclick="filterOwned(this,'owned')">In collection</button>
+        <button class="filter-btn" onclick="filterOwned(this,'unowned')">Needed</button>
+      </div>
     </div>
+
+    <div class="book-grid" id="book-grid"></div>
   </div>
 
-  <div class="book-grid" id="book-grid"></div>
+  <div id="tab-progress" class="tab-panel" style="display:none">
+    <div class="chart-wrap" id="chart-wrap">
+      <div class="chart-head">
+        <h3>Acquisition progress</h3>
+        <div class="chart-eta" id="chart-eta"></div>
+      </div>
+      <div class="chart-area" id="chart-area"></div>
+    </div>
+  </div>
 </div>
 
 <!-- Edit Modal -->
@@ -589,8 +604,8 @@ function updateStats() {
   const spent = all.reduce((s,b) => s + (parseFloat(b.price)||0), 0);
   document.getElementById('stat-owned').textContent = owned;
   document.getElementById('stat-read').textContent = read;
-  document.getElementById('stat-spent').textContent = '£' + spent.toFixed(2);
-  document.getElementById('stat-total').textContent = BOOKS_RAW.length;
+  document.getElementById('stat-spent').textContent = money(spent);
+  document.getElementById('stat-total').textContent = BOOKS_RAW.length.toLocaleString('en-GB');
   // Average price paid (over books with a recorded price > 0) and projected
   // total to complete the collection: actual spent + avg × books still needed.
   const pricedCount = all.filter(b => (parseFloat(b.price) || 0) > 0).length;
@@ -598,8 +613,8 @@ function updateStats() {
   const acquired = all.filter(b => b.status === 'owned' || b.status === 'reading' || b.status === 'read').length;
   const remaining = Math.max(0, BOOKS_RAW.length - acquired);
   const projected = spent + avg * remaining;
-  document.getElementById('stat-avg').textContent = '£' + avg.toFixed(2);
-  document.getElementById('stat-projected').textContent = '£' + projected.toFixed(2);
+  document.getElementById('stat-avg').textContent = money(avg);
+  document.getElementById('stat-projected').textContent = money(projected);
   const pct = owned / BOOKS_RAW.length * 100;
   document.getElementById('progress-fill').style.width = pct + '%';
   document.getElementById('progress-label').textContent = owned + ' / ' + BOOKS_RAW.length;
@@ -608,6 +623,19 @@ function updateStats() {
 
 function fmtDate(t) {
   return new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function money(v) {
+  return '£' + (v || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+window.switchTab = function(tab) {
+  const isLib = tab === 'library';
+  document.getElementById('tab-library').style.display = isLib ? 'block' : 'none';
+  document.getElementById('tab-progress').style.display = isLib ? 'none' : 'block';
+  document.getElementById('tab-btn-library').classList.toggle('active', isLib);
+  document.getElementById('tab-btn-progress').classList.toggle('active', !isLib);
+  if (!isLib) renderChart();
 }
 
 // Line chart: cumulative acquisitions over time, with a linear projection to the goal.
@@ -647,7 +675,7 @@ function renderChart() {
     const pace = (cur - 1) / (lastT - firstT); // books per ms
     pacePerYear = pace * 86400000 * 365.25;
     completionT = lastT + (goal - cur) / pace;
-    eta.innerHTML = 'Est. completion <strong>' + fmtDate(completionT) + '</strong> · ~' + Math.round(pacePerYear) + ' books/yr at current pace';
+    eta.innerHTML = 'Est. completion <strong>' + fmtDate(completionT) + '</strong> · ~' + Math.round(pacePerYear).toLocaleString('en-GB') + ' books/yr at current pace';
   } else {
     eta.textContent = 'Add acquisition dates to at least two owned books to project a completion date.';
   }
