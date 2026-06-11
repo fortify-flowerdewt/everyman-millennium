@@ -115,6 +115,7 @@
   .card-tag { font-size: 0.68rem; padding: 2px 7px; border-radius: 2px; }
   .tag-price { background: var(--gold-light); color: #7a5c10; }
   .tag-source { background: var(--parchment-3); color: var(--ink-2); }
+  .tag-copies { background: var(--crimson-light); color: var(--crimson); }
   .tag-read { background: var(--crimson-light); color: var(--crimson); }
   .tag-reading { background: #fff8e8; color: #8a6010; }
   .card-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; background: var(--parchment-3); border: 1.5px solid var(--border); }
@@ -194,6 +195,7 @@
     </div>
     <div class="stats-bar">
       <div class="stat"><div class="stat-num" id="stat-owned">0</div><div class="stat-label">owned</div></div>
+      <div class="stat"><div class="stat-num" id="stat-copies">0</div><div class="stat-label">copies</div></div>
       <div class="stat"><div class="stat-num" id="stat-read">0</div><div class="stat-label">read</div></div>
       <div class="stat"><div class="stat-num" id="stat-spent">£0</div><div class="stat-label">spent</div></div>
       <div class="stat"><div class="stat-num" id="stat-avg">£0</div><div class="stat-label">avg price</div></div>
@@ -289,16 +291,22 @@
           <input type="date" id="m-date">
         </div>
       </div>
-      <div class="field-group">
-        <label>Condition</label>
-        <select id="m-condition">
-          <option value="">—</option>
-          <option value="New">New</option>
-          <option value="Fine">Fine</option>
-          <option value="Very Good">Very Good</option>
-          <option value="Good">Good</option>
-          <option value="Fair">Fair</option>
-        </select>
+      <div class="field-row">
+        <div class="field-group">
+          <label>Copies owned</label>
+          <input type="number" id="m-copies" min="1" step="1" placeholder="1">
+        </div>
+        <div class="field-group">
+          <label>Condition</label>
+          <select id="m-condition">
+            <option value="">—</option>
+            <option value="New">New</option>
+            <option value="Fine">Fine</option>
+            <option value="Very Good">Very Good</option>
+            <option value="Good">Good</option>
+            <option value="Fair">Fair</option>
+          </select>
+        </div>
       </div>
       <div class="field-group">
         <label>Notes</label>
@@ -589,6 +597,7 @@ window.renderGrid = function() {
     let tags = '';
     if (data.price) tags += `<span class="card-tag tag-price">£${parseFloat(data.price).toFixed(2)}</span>`;
     if (data.source) tags += `<span class="card-tag tag-source">${esc(data.source)}</span>`;
+    if (data.copies > 1) tags += `<span class="card-tag tag-copies">×${data.copies}</span>`;
     if (data.status === 'read') tags += `<span class="card-tag tag-read">Read</span>`;
     if (data.status === 'reading') tags += `<span class="card-tag tag-reading">Reading</span>`;
     card.innerHTML = `<div class="card-top"><span class="card-num">#${num}</span><div class="card-status-dot"></div></div><div class="card-title">${esc(title)}</div><div class="card-author">${esc(author)}</div>${tags ? `<div class="card-meta">${tags}</div>` : ''}`;
@@ -602,7 +611,14 @@ function updateStats() {
   const owned = all.filter(b => b.status !== 'none').length;
   const read = all.filter(b => b.status === 'read').length;
   const spent = all.reduce((s,b) => s + (parseFloat(b.price)||0), 0);
+  // Total physical volumes among acquired titles (duplicates included). This is
+  // informational only — copies never count toward the 250-title goal, progress
+  // bar, or the acquisition chart, which all count unique titles.
+  const copies = all
+    .filter(b => b.status === 'owned' || b.status === 'reading' || b.status === 'read')
+    .reduce((s, b) => s + Math.max(1, parseInt(b.copies, 10) || 1), 0);
   document.getElementById('stat-owned').textContent = owned;
+  document.getElementById('stat-copies').textContent = copies.toLocaleString('en-GB');
   document.getElementById('stat-read').textContent = read;
   document.getElementById('stat-spent').textContent = money(spent);
   document.getElementById('stat-total').textContent = BOOKS_RAW.length.toLocaleString('en-GB');
@@ -733,7 +749,7 @@ function renderChart() {
   area.innerHTML = svg;
 }
 
-function getBook(num) { return collData[num] || { status: 'none', price: '', source: '', date: '', condition: '', notes: '' }; }
+function getBook(num) { return collData[num] || { status: 'none', price: '', source: '', date: '', condition: '', notes: '', copies: 1 }; }
 
 window.openModal = function(num) {
   const [_, title, author] = BOOKS_RAW.find(b => b[0] === num);
@@ -747,6 +763,7 @@ window.openModal = function(num) {
   document.getElementById('m-source').value = data.source || '';
   document.getElementById('m-date').value = data.date || '';
   document.getElementById('m-condition').value = data.condition || '';
+  document.getElementById('m-copies').value = data.copies || 1;
   document.getElementById('m-notes').value = data.notes || '';
   document.getElementById('modal').classList.add('open');
 }
@@ -762,6 +779,7 @@ window.saveBook = function() {
     source: document.getElementById('m-source').value,
     date: document.getElementById('m-date').value,
     condition: document.getElementById('m-condition').value,
+    copies: Math.max(1, parseInt(document.getElementById('m-copies').value, 10) || 1),
     notes: document.getElementById('m-notes').value,
   };
   closeModal();
